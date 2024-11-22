@@ -14,12 +14,108 @@
  */
 
 #include "esp32_port.h"
-#include "driver/uart.h"
-#include "driver/gpio.h"
-#include "esp_timer.h"
-#include "esp_log.h"
-#include "esp_idf_version.h"
+
+#include <stdio.h>
 #include <unistd.h>
+
+#include "driver/gpio.h"
+#include "driver/i2c.h"
+#include "driver/uart.h"
+#include "esp_idf_version.h"
+#include "esp_log.h"
+#include "esp_timer.h"
+
+#define PIN_SCL (45)
+#define PIN_SDA (3)
+
+#define PI4IO_ADDR (0x20)
+
+#define PI4IO_REG_IO_IN_0   (0x00)
+#define PI4IO_REG_IO_OUT_0  (0x02)
+#define PI4IO_REG_POL_INV_1 (0x05)
+#define PI4IO_REG_IO_CONF_0 (0x06)
+#define PI4IO_REG_PULL_EN_1 (0x47)
+
+#define BJTS 1
+
+#define I2C_MASTER_SCL_IO           PIN_SCL      /*!< GPIO number used for I2C master clock */
+#define I2C_MASTER_SDA_IO           PIN_SDA      /*!< GPIO number used for I2C master data  */
+#define I2C_MASTER_NUM              0                          /*!< I2C master i2c port number, the number of i2c peripheral interfaces available will depend on the chip */
+#define TOUCH_I2C_PORT              I2C_MASTER_NUM
+#define I2C_MASTER_FREQ_HZ          400000                     /*!< I2C master clock frequency */
+#define I2C_MASTER_TX_BUF_DISABLE   0                          /*!< I2C master doesn't need buffer */
+#define I2C_MASTER_RX_BUF_DISABLE   0                          /*!< I2C master doesn't need buffer */
+#define I2C_MASTER_TIMEOUT_MS       1000
+#define TOUCH_I2C_TIMEOUT_MS        I2C_MASTER_TIMEOUT_MS
+
+static const char *TAG = "i2c-simple-example";
+
+static esp_err_t i2c_master_init(void)
+{
+    int i2c_master_port = I2C_MASTER_NUM;
+
+    i2c_config_t conf = {
+        .mode = I2C_MODE_MASTER,
+        .sda_io_num = I2C_MASTER_SDA_IO,
+        .scl_io_num = I2C_MASTER_SCL_IO,
+        .sda_pullup_en = GPIO_PULLUP_ENABLE,
+        .scl_pullup_en = GPIO_PULLUP_ENABLE,
+        .master.clk_speed = I2C_MASTER_FREQ_HZ,
+    };
+
+    i2c_param_config(i2c_master_port, &conf);
+
+    return i2c_driver_install(i2c_master_port, conf.mode, I2C_MASTER_RX_BUF_DISABLE, I2C_MASTER_TX_BUF_DISABLE, 0);
+}
+
+static uint16_t iox_output_state = 0xFFFF;
+
+static void iox_pin_write(uint8_t pin, uint8_t state)
+{
+    iox_output_state = state ? iox_output_state | (uint16_t)(0x1 << pin): iox_output_state & ~((uint16_t)(0x1 << pin));
+    const uint8_t reg_io_lo = (uint8_t)(iox_output_state & 0xFF);
+    const uint8_t reg_io_hi = (uint8_t)((iox_output_state & 0xFF00) >> 8);
+    uint8_t buf_out[3] = {PI4IO_REG_IO_OUT_0, reg_io_lo, reg_io_hi};
+    ESP_LOGI(TAG, "Writing buf_out values %02x %02x %02x", buf_out[0], buf_out[1], buf_out[2]);
+    esp_err_t ret = i2c_master_write_to_device(TOUCH_I2C_PORT, PI4IO_ADDR, 
+                                                 buf_out, sizeof(buf_out), 
+                                                 pdMS_TO_TICKS(TOUCH_I2C_TIMEOUT_MS));
+    if (ret != ESP_OK) ESP_LOGE(TAG, "Error writing IO expander");
+}
+
+static void init_i2c(uint8_t reset_pin, uint8_t boot0_pin){
+    ESP_ERROR_CHECK(i2c_master_init());
+    ESP_LOGI(TAG, "I2C initialized successfully");
+
+    // Configure IO expander
+    uint8_t buf[2] = {PI4IO_REG_PULL_EN_1, 0x1E}; // pull up button pins
+    esp_err_t ret = i2c_master_write_to_device(TOUCH_I2C_PORT, PI4IO_ADDR, 
+                                                 buf, sizeof(buf), 
+                                                 pdMS_TO_TICKS(TOUCH_I2C_TIMEOUT_MS));
+
+    uint8_t buf2[2] = {PI4IO_REG_POL_INV_1, 0x1E}; // invert button inputs
+    ret = i2c_master_write_to_device(TOUCH_I2C_PORT, PI4IO_ADDR, 
+                                                 buf2, sizeof(buf2), 
+                                                 pdMS_TO_TICKS(TOUCH_I2C_TIMEOUT_MS));
+
+    // ESP_LOGI(TAG, "pins %d %d", 0x01 << reset_pin, boot0_pin);
+    const uint8_t reg_io_lo = 0xFF & ~((uint8_t)(0x1 << reset_pin)) & ~((uint8_t)(0x1 << boot0_pin));
+    const uint8_t reg_io_hi = 0xFF & ~((uint8_t)(0x1 << (reset_pin-8))) & ~((uint8_t)(0x1 << (boot0_pin-8)));
+
+    ESP_LOGI(TAG, "Writing config values %02x %02x", reg_io_lo, reg_io_hi);
+
+    uint8_t buf21[3] = {PI4IO_REG_IO_CONF_0, reg_io_lo, reg_io_hi}; // set all pins to inputs, except for network PCBA reset and BOOT0
+    ESP_LOGI(TAG, "Writing buf21 values %02x %02x %02x", buf21[0], buf21[1], buf21[2]);
+    ret = i2c_master_write_to_device(TOUCH_I2C_PORT, PI4IO_ADDR, 
+                                                 buf21, sizeof(buf21), 
+                                                 pdMS_TO_TICKS(TOUCH_I2C_TIMEOUT_MS));
+
+    if (ret == ESP_OK){
+        ESP_LOGI(TAG, "Configured IO expander");
+    } else {
+        ESP_LOGE(TAG, "Error configuring IO expander");
+    }     
+}
 
 #if SERIAL_FLASHER_DEBUG_TRACE
 static void transfer_debug_print(const uint8_t *data, uint16_t size, bool write)
@@ -48,6 +144,8 @@ esp_loader_error_t loader_port_esp32_init(const loader_esp32_config_t *config)
     s_uart_port = config->uart_port;
     s_reset_trigger_pin = config->reset_trigger_pin;
     s_gpio0_trigger_pin = config->gpio0_trigger_pin;
+
+    init_i2c((uint8_t) s_reset_trigger_pin, (uint8_t) s_gpio0_trigger_pin);
 
     // Initialize UART
     if (!config->dont_initialize_peripheral) {
@@ -79,15 +177,6 @@ esp_loader_error_t loader_port_esp32_init(const loader_esp32_config_t *config)
 
         s_peripheral_needs_deinit = true;
     }
-
-    // Initialize boot pin selection pins
-    gpio_reset_pin(s_reset_trigger_pin);
-    gpio_set_pull_mode(s_reset_trigger_pin, GPIO_PULLUP_ONLY);
-    gpio_set_direction(s_reset_trigger_pin, GPIO_MODE_OUTPUT);
-
-    gpio_reset_pin(s_gpio0_trigger_pin);
-    gpio_set_pull_mode(s_gpio0_trigger_pin, GPIO_PULLUP_ONLY);
-    gpio_set_direction(s_gpio0_trigger_pin, GPIO_MODE_OUTPUT);
 
     return ESP_LOADER_SUCCESS;
 }
@@ -142,18 +231,25 @@ esp_loader_error_t loader_port_read(uint8_t *data, uint16_t size, uint32_t timeo
 // assert reset pin for 50 milliseconds.
 void loader_port_enter_bootloader(void)
 {
-    gpio_set_level(s_gpio0_trigger_pin, 0);
-    loader_port_reset_target();
-    loader_port_delay_ms(SERIAL_FLASHER_BOOT_HOLD_TIME_MS);
-    gpio_set_level(s_gpio0_trigger_pin, 1);
-}
+    if(!BJTS){
+        iox_pin_write(s_gpio0_trigger_pin, 0);
+        loader_port_reset_target();
+        loader_port_delay_ms(SERIAL_FLASHER_BOOT_HOLD_TIME_MS);
+        iox_pin_write(s_gpio0_trigger_pin, 1);
+    }else{
+        loader_port_reset_target();
+        iox_pin_write(s_gpio0_trigger_pin, 0);
+        loader_port_delay_ms(SERIAL_FLASHER_BOOT_HOLD_TIME_MS);
+        iox_pin_write(s_gpio0_trigger_pin, 1);
+    }
 
+}
 
 void loader_port_reset_target(void)
 {
-    gpio_set_level(s_reset_trigger_pin, 0);
+    iox_pin_write(s_reset_trigger_pin, 0);
     loader_port_delay_ms(SERIAL_FLASHER_RESET_HOLD_TIME_MS);
-    gpio_set_level(s_reset_trigger_pin, 1);
+    iox_pin_write(s_reset_trigger_pin, 1);
 }
 
 

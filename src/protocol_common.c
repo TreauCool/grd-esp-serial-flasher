@@ -394,6 +394,28 @@ esp_loader_error_t loader_get_security_info_cmd(get_security_info_response_data_
     return send_cmd(&cmd_config);
 }
 
+esp_loader_error_t loader_flash_encrypted_data_cmd(const uint8_t *data, uint32_t size)
+{
+    data_command_t data_cmd = {
+        .common = {
+            .direction = WRITE_DIRECTION,
+            .command = FLASH_ENCRYPTED_DATA,
+            .size = CMD_SIZE(data_cmd) + size,
+            .checksum = compute_checksum(data, size)
+        },
+        .data_size = size,
+        .sequence_number = s_sequence_number++,
+    };
+
+    const send_cmd_config cmd_config = {
+        .cmd = &data_cmd,
+        .cmd_size = sizeof(data_cmd),
+        .data = data,
+        .data_size = size,
+    };
+
+    return send_cmd(&cmd_config);
+}
 
 __attribute__ ((weak)) void loader_port_debug_print(const char *str)
 {

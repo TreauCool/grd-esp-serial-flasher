@@ -5,6 +5,7 @@ set(srcs
     src/md5_hash.c
     src/esp_loader.c
     src/protocol_common.c
+    examples/common/example_common.c
 )
 set(defs)
 
