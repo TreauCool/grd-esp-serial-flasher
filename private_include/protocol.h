@@ -68,6 +68,7 @@ typedef enum __attribute__((packed))
     FLASH_DEFL_END = 0x12,
     SPI_FLASH_MD5 = 0x13,
     GET_SECURITY_INFO = 0x14,
+    FLASH_ENCRYPTED_DATA = 0xD4,
 } command_t;
 
 typedef enum __attribute__((packed))
@@ -260,6 +261,8 @@ esp_loader_error_t loader_write_reg_cmd(uint32_t address, uint32_t value, uint32
 esp_loader_error_t loader_read_reg_cmd(uint32_t address, uint32_t *reg);
 
 esp_loader_error_t loader_change_baudrate_cmd(uint32_t new_baudrate, uint32_t old_baudrate);
+
+esp_loader_error_t loader_flash_encrypted_data_cmd(const uint8_t *data, uint32_t size);
 
 #ifdef __cplusplus
 }
