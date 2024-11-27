@@ -51,6 +51,7 @@ extern "C" {
 
 typedef enum __attribute__((packed))
 {
+    // Commands supported by ESP8266 and later chips ROM bootloader.
     FLASH_BEGIN = 0x02,
     FLASH_DATA = 0x03,
     FLASH_END = 0x04,
@@ -60,14 +61,19 @@ typedef enum __attribute__((packed))
     SYNC = 0x08,
     WRITE_REG = 0x09,
     READ_REG = 0x0a,
+    // Some commands supported by ESP32 and later chips ROM bootloader (or -8266 w/ stub).
     SPI_SET_PARAMS = 0x0b,
     SPI_ATTACH = 0x0d,
+    READ_FLASH_SLOW = 0x0E, // ROM only, much slower than the stub flash read.
     CHANGE_BAUDRATE = 0x0f,
     FLASH_DEFL_BEGIN = 0x10,
     FLASH_DEFL_DATA = 0x11,
     FLASH_DEFL_END = 0x12,
     SPI_FLASH_MD5 = 0x13,
+    // Commands supported by ESP32-S2 and later chips ROM bootloader only.
     GET_SECURITY_INFO = 0x14,
+    // Some commands supported by stub only.
+    READ_FLASH = 0xD2,
     FLASH_ENCRYPTED_DATA = 0xD4,
 } command_t;
 
@@ -206,6 +212,13 @@ typedef struct __attribute__((packed))
     uint32_t status_mask;
 } write_spi_command_t;
 
+typedef struct __attribute__((packed))
+{
+    command_common_t common;
+    uint32_t address;
+    uint32_t size;
+} read_flash_slow_command_t;
+
 #define GET_SECURITY_INFO_SECURE_BOOT_EN (1 << 0)
 #define GET_SECURITY_INFO_SECURE_BOOT_AGGRESSIVE_REVOKE (1 << 1)
 #define GET_SECURITY_INFO_SECURE_DOWNLOAD_ENABLE (1 << 2)
@@ -261,6 +274,8 @@ esp_loader_error_t loader_write_reg_cmd(uint32_t address, uint32_t value, uint32
 esp_loader_error_t loader_read_reg_cmd(uint32_t address, uint32_t *reg);
 
 esp_loader_error_t loader_change_baudrate_cmd(uint32_t new_baudrate, uint32_t old_baudrate);
+
+esp_loader_error_t loader_read_flash_slow_cmd(uint32_t address, uint32_t size, uint8_t *data);
 
 esp_loader_error_t loader_flash_encrypted_data_cmd(const uint8_t *data, uint32_t size);
 

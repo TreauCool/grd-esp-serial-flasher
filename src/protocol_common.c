@@ -371,6 +371,30 @@ esp_loader_error_t loader_change_baudrate_cmd(uint32_t new_baudrate, uint32_t ol
 }
 
 
+esp_loader_error_t loader_read_flash_slow_cmd(uint32_t address, uint32_t size, uint8_t *data)
+{
+    read_flash_slow_command_t read_flash_cmd = {
+        .common = {
+            .direction = WRITE_DIRECTION,
+            .command = READ_FLASH_SLOW,
+            .size = CMD_SIZE(read_flash_cmd),
+            .checksum = 0,
+        },
+        .address = address,
+        .size = size
+    };
+
+    const send_cmd_config cmd_config = {
+        .cmd = &read_flash_cmd,
+        .cmd_size = sizeof(read_flash_cmd),
+        .resp_data = data,
+        .resp_data_size = size,
+    };
+
+    return send_cmd(&cmd_config);
+}
+
+
 esp_loader_error_t loader_get_security_info_cmd(get_security_info_response_data_t *response,
         uint32_t *response_recv_size)
 {
