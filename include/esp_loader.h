@@ -214,6 +214,20 @@ esp_loader_error_t esp_loader_flash_start(uint32_t offset, uint32_t image_size, 
 esp_loader_error_t esp_loader_flash_write(void *payload, uint32_t size);
 
 /**
+ * @brief Reads data at supplied address from target without stub.
+ * 
+ * @param address[in] Address from which data will be read.
+ * @param buffer[out] Buffer to store read data.
+ * @param size[in] Size of data to be read in bytes.
+ * 
+ * @return
+ *    - ESP_LOADER_SUCCESS Success
+ *   - ESP_LOADER_ERROR_TIMEOUT Timeout
+ *  - ESP_LOADER_ERROR_INVALID_RESPONSE Internal error
+ */
+esp_loader_error_t esp_loader_flash_read_slow(uint32_t address, void *buffer, uint32_t size);
+
+/**
   * @brief Ends flash operation.
   *
   * @param reboot[in]       reboot the target if true.
